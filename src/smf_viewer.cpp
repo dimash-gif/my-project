@@ -180,41 +180,22 @@ void setup_gl_buffers() {
     glBindVertexArray(0);
 }
 
-void processInput(GLFWwindow* window, bool& colorByNormal) {
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, true);
-
-    // Move camera
+void processInput(GLFWwindow* window) {
+    // continuous input
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) cameraAngle -= 0.02f;
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) cameraAngle += 0.02f;
-    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) cameraHeight += 0.05f;
-    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) cameraHeight -= 0.05f;
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) cameraRadius = std::max(0.05f, cameraRadius - 0.05f);
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) cameraRadius += 0.05f;
+    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) cameraHeight += 0.03f;
+    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) cameraHeight -= 0.03f;
 
-    // Zoom (now more sensitive)
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) cameraRadius -= 0.2f;
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) cameraRadius += 0.2f;
-    if (cameraRadius < 0.3f) cameraRadius = 0.3f;
-    if (cameraRadius > 15.0f) cameraRadius = 15.0f;
-
-    // Toggle projection (P key, once per press)
-    static bool pPressed = false;
+    static bool pWasPressed = false;
     if (glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {
-        if (!pPressed) {
-            perspectiveProj = !perspectiveProj;
-            std::cout << "Projection: " << (perspectiveProj ? "Perspective" : "Orthographic") << std::endl;
-        }
-        pPressed = true;
-    } else pPressed = false;
+        if (!pWasPressed) { perspectiveProj = !perspectiveProj; std::cout << "Projection: " << (perspectiveProj ? "Perspective" : "Orthographic") << std::endl; }
+        pWasPressed = true;
+    } else pWasPressed = false;
 
-    // Toggle shading (G key, once per press)
-    static bool gPressed = false;
-    if (glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS) {
-        if (!gPressed) {
-            colorByNormal = !colorByNormal;
-            std::cout << "Shading: " << (colorByNormal ? "Rainbow (normals)" : "White flat") << std::endl;
-        }
-        gPressed = true;
-    } else gPressed = false;
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) glfwSetWindowShouldClose(window, true);
 }
 
 int main(int argc, char** argv) {
@@ -259,42 +240,40 @@ int main(int argc, char** argv) {
 
     std::cout << "Controls: A/D rotate, W/S zoom, Q/E height, P toggle projection, ESC exit\n";
 
-bool colorByNormal = true;  // start in rainbow mode
+    // main loop
+    while(!glfwWindowShouldClose(window)) {
+        processInput(window);
 
-while (!glfwWindowShouldClose(window)) {
-    processInput(window, colorByNormal);
+        int w,h; glfwGetFramebufferSize(window, &w, &h);
+        float aspect = (h==0)?1.0f:(float)w/(float)h;
+        glViewport(0,0,w,h);
+        glClearColor(0.08f,0.08f,0.1f,1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    int w, h;
-    glfwGetFramebufferSize(window, &w, &h);
-    float aspect = (h == 0) ? 1.0f : (float)w / (float)h;
+        // camera on cylinder
+        glm::vec3 camPos;
+        camPos.x = modelCentroid.x + cameraRadius * cos(cameraAngle);
+        camPos.y = modelCentroid.y + cameraHeight;
+        camPos.z = modelCentroid.z + cameraRadius * sin(cameraAngle);
 
-    glClearColor(0.08f, 0.08f, 0.1f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glm::mat4 view = glm::lookAt(camPos, modelCentroid, glm::vec3(0.0f,1.0f,0.0f));
+        glm::mat4 proj = perspectiveProj ? glm::perspective(glm::radians(45.0f), aspect, 0.01f, 100.0f)
+                                         : glm::ortho(-1.5f*aspect, 1.5f*aspect, -1.5f, 1.5f, -10.0f, 10.0f);
 
-    // --- Camera setup ---
-    glm::vec3 camPos;
-    camPos.x = modelCentroid.x + cameraRadius * cos(cameraAngle);
-    camPos.y = modelCentroid.y + cameraHeight;
-    camPos.z = modelCentroid.z + cameraRadius * sin(cameraAngle);
+        glUseProgram(program);
+        // model = base (center+scale); you can apply extra rotation if desired
+        glm::mat4 model = modelBase;
+        glUniformMatrix4fv(glGetUniformLocation(program,"model"), 1, GL_FALSE, glm::value_ptr(model));
+        glUniformMatrix4fv(glGetUniformLocation(program,"view"),  1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(glGetUniformLocation(program,"projection"), 1, GL_FALSE, glm::value_ptr(proj));
 
-    glm::mat4 view = glm::lookAt(camPos, modelCentroid, glm::vec3(0.0, 1.0, 0.0));
-    glm::mat4 proj = perspectiveProj
-        ? glm::perspective(glm::radians(45.0f), aspect, 0.01f, 100.0f)
-        : glm::ortho(-1.5f * aspect, 1.5f * aspect, -1.5f, 1.5f, -10.0f, 10.0f);
+        glBindVertexArray(VAO);
+        glDrawElements(GL_TRIANGLES, (GLsizei)indices.size(), GL_UNSIGNED_INT, 0);
+        glBindVertexArray(0);
 
-    glUseProgram(program);
-    glUniformMatrix4fv(glGetUniformLocation(program, "model"), 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
-    glUniformMatrix4fv(glGetUniformLocation(program, "view"), 1, GL_FALSE, glm::value_ptr(view));
-    glUniformMatrix4fv(glGetUniformLocation(program, "projection"), 1, GL_FALSE, glm::value_ptr(proj));
-    glUniform1i(glGetUniformLocation(program, "uColorByNormal"), colorByNormal ? 1 : 0);
-
-    glBindVertexArray(VAO);
-    glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
-    glBindVertexArray(0);
-
-    glfwSwapBuffers(window);
-    glfwPollEvents();
-}
+        glfwSwapBuffers(window);
+        glfwPollEvents();
+    }
 
     glDeleteProgram(program);
     if(VAO) glDeleteVertexArrays(1, &VAO);
