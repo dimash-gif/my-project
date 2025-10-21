@@ -1,7 +1,3 @@
-// shading_demo_full.cpp
-// Self-contained SMF viewer with Gouraud & Phong shading, two lights, materials,
-// robust keyboard input handling for UTM (GL 3.0 compatibility / GLSL 130).
-
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
@@ -34,7 +30,6 @@ static bool g_perspective = true;
 
 static double lastFrameTime = 0.0;
 
-// input edge detection
 static bool prevKeys[1024];
 
 static void setDefaultMaterials() {
@@ -43,14 +38,12 @@ static void setDefaultMaterials() {
     g_materials[2] = { {0.0f,0.05f,0.05f}, {0.4f,0.5f,0.5f}, {0.04f,0.7f,0.7f}, 10.0f }; // cyan rubber
 }
 
-// small helper to read file to string (SMF loader uses this not for shaders)
 static std::string readFileToString(const std::string &path) {
     std::ifstream ifs(path);
     if (!ifs.is_open()) return "";
     std::stringstream ss; ss << ifs.rdbuf(); return ss.str();
 }
 
-// SMF loader: reads 'v x y z' and 'f i j k' lines (1-based indices)
 static bool loadSMF(const std::string &filename, std::vector<glm::vec3> &positions, std::vector<glm::ivec3> &faces) {
     std::ifstream in(filename);
     if (!in.is_open()) { std::cerr << "Cannot open SMF: " << filename << '\n'; return false; }
@@ -65,9 +58,7 @@ static bool loadSMF(const std::string &filename, std::vector<glm::vec3> &positio
             positions.push_back(p);
         } else if (type == 'f') {
             glm::ivec3 f; if (!(ss >> f.x >> f.y >> f.z)) { std::cerr<<"Bad f at "<<ln<<"\n"; continue; }
-            // convert to 0-based index
             f -= glm::ivec3(1);
-            // sanity check
             if (f.x < 0 || f.y < 0 || f.z < 0) { std::cerr<<"Invalid face idx at "<<ln<<"\n"; continue; }
             faces.push_back(f);
         }
@@ -75,7 +66,6 @@ static bool loadSMF(const std::string &filename, std::vector<glm::vec3> &positio
     return !positions.empty() && !faces.empty();
 }
 
-// embed vertex/fragment shader sources (GLSL 130)
 static const char* gouraud_vs = R"(
 #version 130
 in vec3 aPos;
@@ -193,7 +183,6 @@ void main() {
 }
 )";
 
-// utility to compile program from embedded source
 static GLuint compileProgramFromSources(const char* vsSrc, const char* fsSrc) {
     GLuint vs = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vs, 1, &vsSrc, NULL);
@@ -219,14 +208,12 @@ static GLuint compileProgramFromSources(const char* vsSrc, const char* fsSrc) {
     return prog;
 }
 
-// build mesh buffers from SMF positions/faces
 static bool buildMeshFromSMF(const std::string &path) {
     std::vector<glm::vec3> pos;
     std::vector<glm::ivec3> faces;
     if (!loadSMF(path, pos, faces)) { std::cerr<<"SMF load failed\n"; return false; }
     if (faces.size() < 1) { std::cerr<<"No faces\n"; return false; }
 
-    // compute averaged normals
     std::vector<glm::vec3> normals(pos.size(), glm::vec3(0.0f));
     for (auto &f : faces) {
         if ((size_t)f.x >= pos.size() || (size_t)f.y >= pos.size() || (size_t)f.z >= pos.size()) continue;
@@ -242,7 +229,6 @@ static bool buildMeshFromSMF(const std::string &path) {
     }
     for (auto &f : faces) { g_indices.push_back(f.x); g_indices.push_back(f.y); g_indices.push_back(f.z); }
 
-    // create GL buffers
     glGenVertexArrays(1, &g_VAO);
     glGenBuffers(1, &g_VBO);
     glGenBuffers(1, &g_EBO);
@@ -258,7 +244,6 @@ static bool buildMeshFromSMF(const std::string &path) {
     return true;
 }
 
-// input processing with edge detection
 static bool keyPressedOnce(GLFWwindow* w, int key) {
     int state = glfwGetKey(w, key);
     bool pressed = (state == GLFW_PRESS || state == GLFW_REPEAT);
@@ -267,13 +252,11 @@ static bool keyPressedOnce(GLFWwindow* w, int key) {
     return false;
 }
 
-// process continuous keys each frame
 static void processContinuousInput(GLFWwindow* win) {
     if (glfwGetKey(win, GLFW_KEY_A) == GLFW_PRESS) camAngle -= 0.02f;
     if (glfwGetKey(win, GLFW_KEY_D) == GLFW_PRESS) camAngle += 0.02f;
     if (glfwGetKey(win, GLFW_KEY_W) == GLFW_PRESS) { camRadius -= 0.04f; if (camRadius<0.2f) camRadius=0.2f; }
     if (glfwGetKey(win, GLFW_KEY_S) == GLFW_PRESS) camRadius += 0.04f;
-    // light adjustments via arrow keys / I K U O
     if (glfwGetKey(win, GLFW_KEY_LEFT) == GLFW_PRESS) lightAngle -= 0.02f;
     if (glfwGetKey(win, GLFW_KEY_RIGHT) == GLFW_PRESS) lightAngle += 0.02f;
     if (glfwGetKey(win, GLFW_KEY_I) == GLFW_PRESS) lightRadius -= 0.04f;
@@ -282,14 +265,12 @@ static void processContinuousInput(GLFWwindow* win) {
     if (glfwGetKey(win, GLFW_KEY_O) == GLFW_PRESS) lightHeight -= 0.04f;
 }
 
-// main
 int main(int argc, char** argv) {
     if (argc < 2) { std::cerr<<"Usage: "<<argv[0]<<" <model.smf>\n"; return -1; }
     std::string modelPath = argv[1];
 
     if (!glfwInit()) { std::cerr<<"GLFW init fail\n"; return -1; }
 
-    // request compatibility-friendly context (UTM safe)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
     glfwWindowHint(GLFW_OPENGL_ANY_PROFILE, GLFW_TRUE);
@@ -302,10 +283,8 @@ int main(int argc, char** argv) {
 
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) { std::cerr<<"GLAD init failed\n"; return -1; }
 
-    // build mesh
     if (!buildMeshFromSMF(modelPath)) { std::cerr << "Failed to build mesh\n"; return -1; }
 
-    // compile shaders
     GLuint gouraudProg = compileProgramFromSources(gouraud_vs, gouraud_fs);
     GLuint phongProg = compileProgramFromSources(phong_vs, phong_fs);
 
@@ -313,20 +292,16 @@ int main(int argc, char** argv) {
 
     glEnable(GL_DEPTH_TEST);
 
-    // init prev keys
     for (int i=0;i<1024;++i) prevKeys[i]=false;
 
-    // main loop
     lastFrameTime = glfwGetTime();
     while (!glfwWindowShouldClose(window)) {
         double now = glfwGetTime();
         double dt = now - lastFrameTime;
         lastFrameTime = now;
 
-        // input: continuous
         processContinuousInput(window);
 
-        // input: edge toggles
         if (keyPressedOnce(window, GLFW_KEY_G)) { g_usePhong = !g_usePhong; std::cout << "Shading: " << (g_usePhong ? "Phong\n" : "Gouraud\n"); }
         if (keyPressedOnce(window, GLFW_KEY_P)) { g_perspective = !g_perspective; std::cout << "Projection: " << (g_perspective ? "Perspective\n" : "Orthographic\n"); }
         if (keyPressedOnce(window, GLFW_KEY_1)) { g_materialIndex = 0; std::cout<<"Material 1\n"; }
@@ -334,10 +309,6 @@ int main(int argc, char** argv) {
         if (keyPressedOnce(window, GLFW_KEY_3)) { g_materialIndex = 2; std::cout<<"Material 3\n"; }
         if (keyPressedOnce(window, GLFW_KEY_ESCAPE)) { glfwSetWindowShouldClose(window, true); }
 
-        // animate camera slowly? (optional)
-        // camAngle += 0.0f; // keep controlled by user
-
-        // compute transforms & light positions
         glm::vec3 camPos( camRadius * cos(camAngle), camHeight, camRadius * sin(camAngle) );
         glm::mat4 view = glm::lookAt(camPos, glm::vec3(0.0f), glm::vec3(0.0f,1.0f,0.0f));
         int w,h; glfwGetFramebufferSize(window, &w, &h);
@@ -346,7 +317,6 @@ int main(int argc, char** argv) {
                                        : glm::ortho(-camRadius*aspect, camRadius*aspect, -camRadius, camRadius, -100.0f, 100.0f);
         glm::mat4 model = glm::mat4(1.0f);
 
-        // lights
         glm::vec3 worldLightPos( lightRadius * cos(lightAngle), lightHeight, lightRadius * sin(lightAngle) );
         glm::vec3 cameraLightPos = camPos; // camera-space light attached to eye
         glm::vec3 worldLightAmbient(0.2f), worldLightDiffuse(0.6f), worldLightSpec(1.0f);
@@ -358,7 +328,6 @@ int main(int argc, char** argv) {
         GLuint prog = g_usePhong ? phongProg : gouraudProg;
         glUseProgram(prog);
 
-        // upload common uniforms
         GLint loc_model = glGetUniformLocation(prog, "model");
         GLint loc_view  = glGetUniformLocation(prog, "view");
         GLint loc_proj  = glGetUniformLocation(prog, "projection");
@@ -369,7 +338,6 @@ int main(int argc, char** argv) {
         glUniformMatrix4fv(loc_proj, 1, GL_FALSE, glm::value_ptr(proj));
         if (loc_viewPos != -1) glUniform3fv(loc_viewPos, 1, glm::value_ptr(camPos));
 
-        // lights
         auto setVec3 = [&](const char* name, const glm::vec3 &v){
             GLint L = glGetUniformLocation(prog, name);
             if (L != -1) glUniform3fv(L, 1, glm::value_ptr(v));
@@ -384,13 +352,11 @@ int main(int argc, char** argv) {
         setVec3("cameraLightDiffuse", cameraLightDiffuse);
         setVec3("cameraLightSpec", cameraLightSpec);
 
-        // material
         setVec3("materialAmbient", g_materials[g_materialIndex].ambient);
         setVec3("materialDiffuse", g_materials[g_materialIndex].diffuse);
         setVec3("materialSpec", g_materials[g_materialIndex].specular);
         setFloat("materialShininess", g_materials[g_materialIndex].shininess);
 
-        // draw
         glBindVertexArray(g_VAO);
         glDrawElements(GL_TRIANGLES, (GLsizei)g_indices.size(), GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
